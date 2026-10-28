@@ -1,10 +1,16 @@
 import { fetchFlightsHtml, parse, TimeoutError } from "fast-flights-ts";
 import { ZodError } from "zod";
 import { parseQuery } from "./query";
+import { spec } from "./spec";
 
 export default {
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (path === "/" && (request.method === "GET" || request.method === "HEAD")) {
+      return new Response(request.method === "HEAD" ? null : spec, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
     if (path === "/health" && request.method === "GET") {
       return Response.json({ ok: true });
     }

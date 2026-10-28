@@ -19,6 +19,8 @@ npm run dev
 
 ## Search
 
+Visit `/` in a browser for a brief parameter reference and example JSON request.
+
 `POST /flights` accepts JSON matching the library's query options, with passengers supplied as a plain object:
 
 ```sh
