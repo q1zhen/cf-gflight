@@ -38,9 +38,49 @@ Example JSON body
   "max_stops": 0
 }
 
-Response: { "flights": [...], "metadata": { ... } }
-Errors:   { "error": "..." } (validation errors also include "issues")
-          400 invalid input; 404 unknown route; 405 wrong method;
+Success response (200, application/json)
+  {
+    flights: Array<{
+      type: string,             // Raw upstream identifier, e.g. "AA".
+      price: number,            // Price in the requested currency (default USD).
+      airlines: string[],       // Airline names, e.g. ["American"].
+      flights: Array<{          // Flight segments within this result.
+        from_airport: { code: string, name: string },
+        to_airport: { code: string, name: string },
+        departure: { date: [year, month, day], time: [hour, minute] },
+        arrival: { date: [year, month, day], time: [hour, minute] },
+        duration: number,       // Minutes, per segment; excludes layovers.
+        plane_type: string     // Aircraft name, e.g. "Boeing 777".
+      }>,
+      carbon: {
+        emission: number,      // Grams of emissions for this result.
+        typical_on_route: number // Typical route emissions in grams.
+      }
+    }>,
+    metadata: {
+      airlines: Array<{ code: string, name: string }>,
+      alliances: Array<{ code: string, name: string }>
+    }
+  }
+
+  Notation above describes types; actual responses are JSON.
+  Date/time entries are numbers: date [2027, 1, 20], time [9, 10].
+  Times use a 24-hour clock; no timezone or UTC offset is included.
+  Top-level flights are search results; nested flights are their segments.
+  Round-trip results can contain outbound segments only, not a full itinerary.
+  Missing upstream values may appear as 0, empty strings, or empty arrays.
+  No results: { "flights": [], "metadata": { "airlines": [], "alliances": [] } }
+  Metadata may still be populated when flights is empty.
+
+Error response (application/json)
+  { "error": "..." }
+  Validation errors also include an issues array. Each issue has:
+    code: string, path: Array<string | number>, message: string
+  Additional issue fields depend on the validation rule.
+  Example: { "error": "Invalid search parameters", "issues": [
+    { "code": "custom", "path": ["passengers"], "message": "Use 1–9 passengers in total." }
+  ] }
+  Status: 400 invalid input; 404 unknown route; 405 wrong method;
           415 wrong content type; 422 unsupported trip;
           502 upstream failure; 504 upstream timeout (20 seconds).
 

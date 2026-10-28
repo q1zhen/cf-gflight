@@ -19,7 +19,7 @@ npm run dev
 
 ## Search
 
-Visit `/` in a browser for a brief parameter reference and example JSON request.
+Visit `/` in a browser for parameters, an example JSON request, and success/error response schemas with field types and units.
 
 `POST /flights` accepts JSON matching the library's query options, with passengers supplied as a plain object:
 
