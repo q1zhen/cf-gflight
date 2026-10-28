@@ -1,7 +1,8 @@
-import { fetchFlightsHtml, parse, TimeoutError } from "fast-flights-ts";
+import { fetchFlightsHtml, TimeoutError } from "fast-flights-ts";
 import { ZodError } from "zod";
 import { parseQuery } from "./query";
 import { spec } from "./spec";
+import { parseResults } from "./results";
 
 export default {
   async fetch(request: Request): Promise<Response> {
@@ -49,9 +50,7 @@ export default {
     try {
       // Google's RPC endpoint returns an error payload from Workers; HTML works.
       const html = await fetchFlightsHtml(query, { timeout: 20_000, maxRetries: 0 });
-      const flights = parse(html);
-      // JSON.stringify on the library's array would otherwise drop its metadata.
-      return Response.json({ flights, metadata: flights.metadata });
+      return Response.json(parseResults(html, query));
     } catch (error) {
       console.error("Flight search failed:", error);
       const timedOut = error instanceof TimeoutError;

@@ -52,6 +52,8 @@ Dates must be valid `YYYY-MM-DD` dates in chronological order. For a round trip,
 
 The response is `{ "flights": [...], "metadata": { ... } }`, preserving the library's flight records and airline/alliance metadata. An empty result is a successful response with `flights: []`.
 
+Each result includes `google_flights_url`: an itinerary-specific Google Flights link. One-way links open booking details; round-trip links select the outbound flight and open return-flight selection. Links preserve the query's travelers, cabin, dates, language, and currency. The field is `null` if Google omits required flight identifiers. Google may reprice flights when the link opens.
+
 `GET /health` returns `{ "ok": true }` without contacting Google.
 
 Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 422 for unsupported multi-city searches, 502 for upstream failures, and 504 for the 20-second upstream timeout. Searches do not retry.

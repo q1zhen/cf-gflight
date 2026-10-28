@@ -43,6 +43,7 @@ Success response (200, application/json)
     flights: Array<{
       type: string,             // Raw upstream identifier, e.g. "AA".
       price: number,            // Price in the requested currency (default USD).
+      google_flights_url: string | null, // Link to this result on Google Flights.
       airlines: string[],       // Airline names, e.g. ["American"].
       flights: Array<{          // Flight segments within this result.
         from_airport: { code: string, name: string },
@@ -68,6 +69,10 @@ Success response (200, application/json)
   Times use a 24-hour clock; no timezone or UTC offset is included.
   Top-level flights are search results; nested flights are their segments.
   Round-trip results can contain outbound segments only, not a full itinerary.
+  google_flights_url opens booking details for one-way results. For round trips,
+  it selects this outbound flight and opens return-flight selection, preserving
+  the return date, travelers, cabin, language, and currency. It is null if Google
+  omits the flight identifiers needed for an exact link. Prices may change.
   Missing upstream values may appear as 0, empty strings, or empty arrays.
   No results: { "flights": [], "metadata": { "airlines": [], "alliances": [] } }
   Metadata may still be populated when flights is empty.
