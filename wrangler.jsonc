@@ -4,7 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-04-13",
   "compatibility_flags": ["nodejs_compat"],
-  // The library's optional HTML transport is native Node code. Queries use fetch.
+  // Disable the optional native addon so the HTML transport uses native fetch.
   "alias": {
     "node-libcurl": "./src/no-libcurl.ts"
   }

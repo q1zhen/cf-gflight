@@ -1,4 +1,4 @@
-import { getFlights, TimeoutError } from "fast-flights-ts";
+import { fetchFlightsHtml, parse, TimeoutError } from "fast-flights-ts";
 import { ZodError } from "zod";
 import { parseQuery } from "./query";
 
@@ -35,8 +35,15 @@ export default {
       return Response.json({ error: "Invalid search parameters", issues: error.issues }, { status: 400 });
     }
 
+    // The HTML endpoint does not provide multi-city results (Google trip enum 3).
+    if (query.trip === 3) {
+      return Response.json({ error: "Multi-city searches are not supported by the HTML transport" }, { status: 422 });
+    }
+
     try {
-      const flights = await getFlights(query, { timeout: 20_000, maxRetries: 0 });
+      // Google's RPC endpoint returns an error payload from Workers; HTML works.
+      const html = await fetchFlightsHtml(query, { timeout: 20_000, maxRetries: 0 });
+      const flights = parse(html);
       // JSON.stringify on the library's array would otherwise drop its metadata.
       return Response.json({ flights, metadata: flights.metadata });
     } catch (error) {

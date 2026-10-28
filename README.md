@@ -1,6 +1,8 @@
 # cf-gflight
 
-A small Cloudflare Worker API around [fast-flights-ts](https://github.com/decocms/fast-flights-ts). Uses the library's Google Flights RPC transport and native `fetch`. No database, API keys, or framework required.
+A small Cloudflare Worker API around [fast-flights-ts](https://github.com/decocms/fast-flights-ts). Uses the library's HTML fetcher and parser with native `fetch`. No database, API keys, or framework required.
+
+Google's RPC endpoint returns an error payload from Cloudflare Workers, so this API fetches the Google Flights HTML page instead. The request and response formats are unchanged.
 
 ## Run
 
@@ -11,7 +13,7 @@ npm ci --ignore-scripts
 npm run dev
 ```
 
-`--ignore-scripts` skips building the library's optional native `node-libcurl` addon. Wrangler aliases that addon to a small stub because Workers cannot load it; structured searches use `fetch` directly.
+`--ignore-scripts` skips building the library's optional native `node-libcurl` addon. Wrangler aliases that addon to a small stub because Workers cannot load it; the HTML fetcher falls back to native `fetch`.
 
 `npm audit` currently reports vulnerabilities in that unused addon's build dependencies. Those dependencies are excluded from the Worker bundle.
 
@@ -38,7 +40,7 @@ Only `flights` is required. Defaults: one-way, economy, one adult, USD, `en-US`,
 
 Supported options:
 
-- `trip`: `one-way` (1 leg), `round-trip` (2 reversed legs), or `multi-city` (2–6 legs, including open-jaw trips).
+- `trip`: `one-way` (1 leg) or `round-trip` (2 reversed legs). Multi-city/open-jaw searches return 422 because Google's HTML endpoint does not provide their results.
 - `seat`: `economy`, `premium-economy`, `business`, or `first`.
 - `passengers`: `adults`, `children`, `infants_in_seat`, `infants_on_lap`; 1–9 total, with an adult for each lap infant. Unspecified adults default to 1; other counts default to 0.
 - `currency` and `language`: Google Flights currency and language codes.
@@ -50,7 +52,7 @@ The response is `{ "flights": [...], "metadata": { ... } }`, preserving the libr
 
 `GET /health` returns `{ "ok": true }` without contacting Google.
 
-Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 502 for upstream failures, and 504 for the 20-second upstream timeout. Searches do not retry.
+Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 422 for unsupported multi-city searches, 502 for upstream failures, and 504 for the 20-second upstream timeout. Searches do not retry.
 
 This is an unauthenticated server-to-server API. Google may rate-limit or block scraping, and changes to its internal API can break searches.
 
