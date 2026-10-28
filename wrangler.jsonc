@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-gflight",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-13",
+  "compatibility_flags": ["nodejs_compat"],
+  // The library's optional HTML transport is native Node code. Queries use fetch.
+  "alias": {
+    "node-libcurl": "./src/no-libcurl.ts"
+  }
+}
