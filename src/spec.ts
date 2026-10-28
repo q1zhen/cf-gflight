@@ -3,6 +3,11 @@ export const spec = `cf-gflight — Google Flights API
 POST /flights
 Content-Type: application/json
 
+Browser access
+  CORS is enabled for all origins. Send JSON using fetch() with method POST.
+  OPTIONS preflights allow Content-Type and are cached for 24 hours.
+  No cookies or credentials are required; do not use credentials: "include".
+
 JSON parameters
   flights             Required array: 1 leg for one-way, 2 for round-trip.
     date              Required date in YYYY-MM-DD format.

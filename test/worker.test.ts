@@ -20,13 +20,45 @@ function htmlResults(withFlight = false) {
 
 const leg = { date: "2027-01-20", from_airport: "JFK", to_airport: "LAX" };
 const returnLeg = { date: "2027-01-27", from_airport: "LAX", to_airport: "JFK" };
-const search = (body: unknown) => worker.fetch(new Request("https://example.com/flights", {
-  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-}));
+const search = async (body: unknown) => {
+  const response = await worker.fetch(new Request("https://example.com/flights", {
+    method: "POST", headers: { "Content-Type": "application/json", Origin: "https://app.example" },
+    body: JSON.stringify(body),
+  }));
+  // Both successful searches and errors must be readable by cross-origin clients.
+  expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  return response;
+};
 
 beforeEach(() => vi.resetAllMocks());
 
 describe("flight API", () => {
+  it("answers browser JSON preflights without contacting Google", async () => {
+    const response = await worker.fetch(new Request("https://example.com/flights", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://app.example",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+    }));
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    expect(response.headers.get("Access-Control-Allow-Headers")?.toLowerCase()).toBe("content-type");
+    expect(response.headers.get("Access-Control-Max-Age")).toBe("86400");
+    expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(false);
+    expect(fetchFlightsHtml).not.toHaveBeenCalled();
+  });
+
+  it.each(["/", "/health", "/missing", "/flights"])("allows browser access to %s", async (path) => {
+    const response = await worker.fetch(new Request(`https://example.com${path}`, {
+      headers: { Origin: "http://localhost:3000" },
+    }));
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
   it("checks health without calling Google", async () => {
     const response = await worker.fetch(new Request("https://example.com/health"));
     expect(await response.json()).toEqual({ ok: true });

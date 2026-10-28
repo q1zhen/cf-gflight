@@ -58,7 +58,22 @@ Each result includes `google_flights_url`: an itinerary-specific Google Flights 
 
 Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 422 for unsupported multi-city searches, 502 for upstream failures, and 504 for the 20-second upstream timeout. Searches do not retry.
 
-This is an unauthenticated server-to-server API. Google may rate-limit or block scraping, and changes to its internal API can break searches.
+This public API supports browsers and server-side clients. CORS allows all origins, including localhost, with JSON POST preflights handled automatically. Error responses also include CORS headers. No cookies or authentication are required; do not set `credentials: "include"`.
+
+```js
+const response = await fetch("https://cf-gflight.qizhen-yang.workers.dev/flights", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    flights: [{ date: "2027-01-20", from_airport: "JFK", to_airport: "LAX" }],
+  }),
+});
+const data = await response.json();
+if (!response.ok) throw new Error(data.error);
+console.log(data.flights);
+```
+
+Google may rate-limit or block scraping, and changes to its internal API can break searches.
 
 ## Check and deploy
 
@@ -66,8 +81,7 @@ This is an unauthenticated server-to-server API. Google may rate-limit or block 
 npm run typecheck
 npm test
 npm run build        # bundle only; does not deploy
-npx wrangler login
-npm run deploy
+git push origin main # Cloudflare CI builds and deploys automatically
 ```
 
-Wrangler prints the deployed URL. The Worker uses [Cloudflare's Node.js compatibility mode](https://developers.cloudflare.com/workers/runtime-apis/nodejs/) for library compatibility.
+Deploy changes by committing and pushing to `main`; Cloudflare CI handles deployment. The Worker uses [Cloudflare's Node.js compatibility mode](https://developers.cloudflare.com/workers/runtime-apis/nodejs/) for library compatibility.
