@@ -41,6 +41,9 @@ async function handleRequest(request: Request): Promise<Response> {
     return Response.json({ error: "Invalid search parameters", issues: error.issues }, { status: 400 });
   }
 
+  if (query.trip === 1) {
+    return Response.json({ error: "Round-trip searches are temporarily disabled. Use one-way searches." }, { status: 422 });
+  }
   // The HTML endpoint does not provide multi-city results (Google trip enum 3).
   if (query.trip === 3) {
     return Response.json({ error: "Multi-city searches are not supported by the HTML transport" }, { status: 422 });

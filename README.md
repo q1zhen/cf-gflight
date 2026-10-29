@@ -42,25 +42,23 @@ Only `flights` is required. Defaults: one-way, economy, one adult, USD, `en-US`,
 
 Supported options:
 
-- `trip`: `one-way` (1 leg) or `round-trip` (2 reversed legs). Multi-city/open-jaw searches return 422 because Google's HTML endpoint does not provide their results.
+- `trip`: `one-way` (exactly 1 leg). Round-trip searches are temporarily disabled and return 422. Multi-city searches are also unsupported (422).
 - `seat`: `economy`, `premium-economy`, `business`, or `first`.
 - `passengers`: `adults`, `children`, `infants_in_seat`, `infants_on_lap`; 1–9 total, with an adult for each lap infant. Unspecified adults default to 1; other counts default to 0.
 - `currency` and `language`: Google Flights currency and language codes.
 - `max_stops`: 0–3, or `null` for unrestricted. Each leg can override it and optionally specify `airlines`, such as `["AA", "DL"]`.
 
-Dates must be valid `YYYY-MM-DD` dates in chronological order. For a round trip, add a return leg with reversed airports and set `"trip": "round-trip"`.
+Dates must be valid `YYYY-MM-DD` dates. Departure and arrival airports must differ.
 
 The response is `{ "flights": [...], "metadata": { ... } }`, preserving the library's flight records and airline/alliance metadata. An empty result is a successful response with `flights: []`.
 
-Round trips expand the **first 20 outbound options in Google's result order**. Each available return option creates a complete itinerary, so the response can contain more than 20 results. Each result adds `outbound` and `return` arrays of segments; `flights` concatenates both directions. `price` is Google's total fare for that exact pair (not a sum of separate quotes). `airlines` combines both directions, `carbon` sums their emissions, and `type` retains the raw outbound identifier. One-way response fields are unchanged.
+Each result includes `google_flights_url`: a link to booking details with the complete itinerary selected. Links preserve the query's travelers, cabin, dates, language, and currency. The field is `null` if Google omits required flight identifiers. Google may reprice flights when the link opens.
 
-Each result includes `google_flights_url`: a link to booking details with the complete itinerary selected, including both directions for round trips. Links preserve the query's travelers, cabin, dates, language, and currency. The field is `null` if Google omits required flight identifiers. Google may reprice flights when the link opens.
-
-Round trips use one initial search and up to 20 return lookups, with at most four return lookups in parallel. Outbounds with no return options produce no results. Any failed lookup fails the whole request rather than silently returning partial results. The entire search has a 20-second timeout.
+Each search makes one Google request, with no retries and a 20-second timeout. Round-trip expansion has been removed to reduce upstream rate limiting.
 
 `GET /health` returns `{ "ok": true }` without contacting Google.
 
-Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 422 for unsupported multi-city searches, 502 for upstream failures, and 504 for the 20-second overall search timeout. Searches do not retry.
+Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 422 for round-trip or multi-city searches, 502 for upstream failures, and 504 for the 20-second overall search timeout. Searches do not retry.
 
 This public API supports browsers and server-side clients. CORS allows all origins, including localhost, with JSON POST preflights handled automatically. Error responses also include CORS headers. No cookies or authentication are required; do not set `credentials: "include"`.
 

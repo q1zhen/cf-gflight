@@ -9,14 +9,14 @@ Browser access
   No cookies or credentials are required; do not use credentials: "include".
 
 JSON parameters
-  flights             Required array: 1 leg for one-way, 2 for round-trip.
+  flights             Required array containing exactly 1 leg.
     date              Required date in YYYY-MM-DD format.
     from_airport      Required 3-letter airport code, e.g. JFK.
     to_airport        Required 3-letter airport code, e.g. LAX.
     max_stops         Optional per-leg override: integer 0–3, or null.
     airlines          Optional array of 2-character airline codes, e.g. ["AA"].
                       Maximum 50 codes; omit or use null for any airline.
-  trip                one-way (default) | round-trip
+  trip                one-way (default; only supported trip type)
   seat                economy (default) | premium-economy | business | first
   passengers          Optional object, with integer counts from 0–9:
     adults            Default: 1
@@ -29,15 +29,12 @@ JSON parameters
                       Omit or use null for unrestricted stops.
 
 Rules
-  Dates must be chronological; departure and arrival airports must differ.
-  Round trips require reversed airports on the return leg.
+  Departure and arrival airports must differ.
   Use 1–9 passengers total, with an adult for each infant on lap.
   Airport and currency codes are normalized to uppercase.
-  Multi-city and open-jaw trips are unsupported (422).
-  Round trips expand the first 20 outbound options in Google's result order.
-  Every available return option for each selected outbound becomes a result;
-  the response can contain more than 20 complete round-trip combinations.
-  This uses up to 21 Google requests, with at most 4 return lookups at a time.
+  Round-trip searches are temporarily disabled (422).
+  Multi-city searches are unsupported (422).
+  Each search makes one Google request, with no retries.
 
 Example JSON body
 {
@@ -62,11 +59,9 @@ Success response (200, application/json)
         duration: number,       // Minutes, per segment; excludes layovers.
         plane_type: string     // Aircraft name, e.g. "Boeing 777".
       }>,
-      outbound?: Array<Segment>, // Round trips only: outbound segments.
-      return?: Array<Segment>,   // Round trips only: return segments.
       carbon: {
-        emission: number,      // Grams, summed across both round-trip directions.
-        typical_on_route: number // Typical grams, summed for round trips.
+        emission: number,      // Grams for this itinerary.
+        typical_on_route: number // Typical grams for this route.
       }
     }>,
     metadata: {
@@ -76,19 +71,12 @@ Success response (200, application/json)
   }
 
   Notation above describes types; actual responses are JSON.
-  Segment has the same fields as an element of the nested flights array.
-  A question mark marks a field omitted for one-way results.
   Date/time entries are numbers: date [2027, 1, 20], time [9, 10].
   Times use a 24-hour clock; no timezone or UTC offset is included.
   Top-level flights are search results; nested flights are their segments.
-  Round-trip results contain BOTH directions: flights = outbound + return.
-  price is Google's total fare for that exact pair, not the sum of two quotes.
-  airlines includes carriers from both directions. type remains the raw outbound
-  identifier. Each google_flights_url opens booking details with the complete
-  itinerary selected, preserving travelers, cabin, language, and currency.
+  Each google_flights_url opens booking details with the itinerary selected,
+  preserving travelers, cabin, language, and currency.
   The link is null if required identifiers are missing. Prices may change.
-  If an outbound has no return options, it produces no combinations.
-  Failed return lookups fail the request (502/504); no partial results are sent.
   Missing upstream values may appear as 0, empty strings, or empty arrays.
   No results: { "flights": [], "metadata": { "airlines": [], "alliances": [] } }
   Metadata may still be populated when flights is empty.

@@ -120,20 +120,27 @@ describe("flight API", () => {
     expect(options).toMatchObject({ timeout: 20_000, maxRetries: 0, signal: expect.any(AbortSignal) });
   });
 
-  it("supports round-trip and optional filters", async () => {
+  it("supports one-way optional filters", async () => {
     vi.mocked(fetchFlightsHtml).mockResolvedValue(htmlResults());
     const response = await search({
-      flights: [{ ...leg, airlines: ["AA"], max_stops: 0 }, returnLeg],
-      trip: "round-trip", seat: "business", max_stops: 1, currency: "eur", language: "de",
+      flights: [{ ...leg, airlines: ["AA"], max_stops: 0 }],
+      trip: "one-way", seat: "business", max_stops: 1, currency: "eur", language: "de",
       passengers: { adults: 2, children: 1 },
     });
     expect(response.status).toBe(200);
     expect(vi.mocked(fetchFlightsHtml).mock.calls[0][0]).toMatchObject({
-      flightData: [{ ...leg, airlines: ["AA"], max_stops: 0 }, { ...returnLeg, max_stops: 1 }],
-      seat: 3, trip: 1, currency: "EUR", language: "de",
+      flightData: [{ ...leg, airlines: ["AA"], max_stops: 0 }],
+      seat: 3, trip: 2, currency: "EUR", language: "de",
       passengers: [1, 1, 2],
     });
     expect(await response.json()).toMatchObject({ flights: [] });
+  });
+
+  it("rejects round trips without contacting Google", async () => {
+    const response = await search({ flights: [leg, returnLeg], trip: "round-trip" });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "Round-trip searches are temporarily disabled. Use one-way searches." });
+    expect(fetchFlightsHtml).not.toHaveBeenCalled();
   });
 
   it("rejects multi-city instead of returning misleading empty results", async () => {

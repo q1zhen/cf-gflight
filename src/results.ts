@@ -1,9 +1,6 @@
 import { parse, parsePayload, type Query } from "fast-flights-ts";
 import { encodeSelection, googleFlightsUrl, selectFlight } from "./selection";
 
-// Internal flight identifiers are excluded automatically from JSON responses.
-export const selection = Symbol("selection");
-
 export function parseResults(html: string, query: Query, direction = 0) {
   // Keep the library's parsing/validation and metadata behavior.
   const { metadata } = parse(html);
@@ -21,10 +18,7 @@ export function parseResults(html: string, query: Query, direction = 0) {
     return [{
       ...flight,
       google_flights_url: encoded ? googleFlightsUrl(selectFlight(query, encoded, direction), query.trip === 2 || direction === 1) : null,
-      [selection]: encoded,
     }];
   });
   return { flights, metadata };
 }
-
-export type SearchFlight = ReturnType<typeof parseResults>["flights"][number];
