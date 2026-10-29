@@ -1,16 +1,17 @@
-import { fetchFlightsHtml, TimeoutError, type Query } from "fast-flights-ts";
-import { parseResults } from "./results";
+import { createQuery, fetchFlights, type StructuredQueryInput } from "google-flights-scraper";
+import { googleFlightsUrl } from "./selection";
+import { fetchFlightData } from "./transport";
 
-export async function searchFlights(query: Query) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new TimeoutError(20_000)), 20_000);
-  try {
-    const html = await fetchFlightsHtml(query, {
-      timeout: 20_000, maxRetries: 0, signal: controller.signal,
-    });
-    return parseResults(html, query);
-  } finally {
-    clearTimeout(timer);
-    controller.abort();
-  }
+export async function searchFlights(query: StructuredQueryInput) {
+  const result = await fetchFlights(query, {
+    fetch: fetchFlightData, transport: "html", timeoutMs: 20_000, retry: { attempts: 0 }, cache: false,
+  });
+  const encoded = createQuery(query);
+  return {
+    ...result,
+    flights: result.flights.map((flight) => ({
+      ...flight,
+      googleFlightsUrl: googleFlightsUrl(encoded, flight.segments),
+    })),
+  };
 }

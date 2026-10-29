@@ -1,58 +1,57 @@
-import { createQuery, Passengers } from "fast-flights-ts";
+import { createQuery, type StructuredQueryInput } from "google-flights-scraper";
 import { z } from "zod";
 
 const airport = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/);
-const stops = z.number().int().min(0).max(3).nullable().optional();
-const count = z.number().int().min(0).max(9);
+const stops = z.number().int().min(0).max(0x7fffffff).optional();
+const count = z.number().int().min(0).max(9).optional();
+const timeWindow = z.strictObject({
+  earliest: z.string().trim().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
+  latest: z.string().trim().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
+}).refine((window) => !window.earliest || !window.latest || window.earliest <= window.latest, {
+  message: "earliest must not exceed latest; overnight windows are not supported.",
+});
 
-const searchSchema = z.object({
-  flights: z.array(z.object({
+const searchSchema = z.strictObject({
+  flights: z.array(z.strictObject({
     date: z.iso.date(),
-    from_airport: airport,
-    to_airport: airport,
-    max_stops: stops,
-    airlines: z.array(z.string().regex(/^[A-Z0-9]{2}$/)).max(50).nullable().optional(),
+    fromAirport: airport,
+    toAirport: airport,
+    maxStops: stops,
+    airlines: z.array(z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{2,32}$/)).max(50).optional(),
   })).min(1).max(6),
   trip: z.enum(["one-way", "round-trip", "multi-city"]).default("one-way"),
-  seat: z.enum(["economy", "premium-economy", "business", "first"]).default("economy"),
-  passengers: z.object({
-    adults: count.default(1),
-    children: count.default(0),
-    infants_in_seat: count.default(0),
-    infants_on_lap: count.default(0),
-  }).default({ adults: 1, children: 0, infants_in_seat: 0, infants_on_lap: 0 }),
-  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("USD"),
-  language: z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/).default("en-US"),
-  max_stops: stops,
+  seat: z.enum(["economy", "premium-economy", "business", "first"]).optional(),
+  passengers: z.strictObject({
+    adults: count, children: count, infantsInSeat: count, infantsOnLap: count,
+  }).optional(),
+  currency: z.string().trim().toUpperCase().regex(/^(?:[A-Z]{3})?$/).optional(),
+  language: z.string().regex(/^(?:[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?)?$/).optional(),
+  region: z.string().trim().toUpperCase().regex(/^(?:[A-Z]{2})?$/).optional(),
+  maxStops: stops,
+  filters: z.strictObject({
+    departureTime: timeWindow.optional(),
+    arrivalTime: timeWindow.optional(),
+    layover: z.strictObject({
+      minMinutes: z.number().int().nonnegative().optional(),
+      maxMinutes: z.number().int().nonnegative().optional(),
+    }).optional(),
+    connectionAirports: z.strictObject({
+      allow: z.array(airport).max(50).optional(),
+      block: z.array(airport).max(50).optional(),
+    }).optional(),
+  }).optional(),
 }).superRefine((input, ctx) => {
-  const { flights, trip, passengers } = input;
-  const issue = (path: string, message: string) =>
-    ctx.addIssue({ code: "custom", path: [path], message });
-
-  if ((trip === "one-way" && flights.length !== 1) ||
-      (trip === "round-trip" && flights.length !== 2) ||
-      (trip === "multi-city" && flights.length < 2)) {
-    issue("flights", "Use 1 leg for one-way, 2 for round-trip, or 2–6 for multi-city.");
+  if (input.flights.some((flight) => flight.fromAirport === flight.toAirport)) {
+    ctx.addIssue({ code: "custom", path: ["flights"], message: "Departure and arrival airports must differ." });
   }
-  if (trip === "round-trip" && flights.length === 2 &&
-      (flights[0].from_airport !== flights[1].to_airport ||
-       flights[0].to_airport !== flights[1].from_airport)) {
-    issue("flights", "Round-trip airports must be reversed on the return leg; use multi-city for open-jaw trips.");
-  }
-  if (flights.some((flight, i) => i > 0 && flight.date < flights[i - 1].date)) {
-    issue("flights", "Flight dates must be in chronological order.");
-  }
-  if (flights.some((flight) => flight.from_airport === flight.to_airport)) {
-    issue("flights", "Departure and arrival airports must differ.");
-  }
-  const total = Object.values(passengers).reduce((sum, value) => sum + value, 0);
-  if (total < 1 || total > 9) issue("passengers", "Use 1–9 passengers in total.");
-  if (passengers.infants_on_lap > passengers.adults) {
-    issue("passengers", "Each infant on lap needs an adult.");
+  if (input.flights.some((flight, i) => i > 0 && flight.date < input.flights[i - 1].date)) {
+    ctx.addIssue({ code: "custom", path: ["flights"], message: "Flight dates must be chronological." });
   }
 });
 
-export function parseQuery(body: unknown) {
+export function parseQuery(body: unknown): StructuredQueryInput {
   const input = searchSchema.parse(body);
-  return createQuery({ ...input, passengers: new Passengers(input.passengers) });
+  // Use upstream validation for passenger totals, leg counts and filter bounds.
+  createQuery(input);
+  return input;
 }

@@ -4,8 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-04-13",
   "compatibility_flags": ["nodejs_compat"],
-  // Disable the optional native addon so the HTML transport uses native fetch.
+  // Adapt Node-only helpers; requests and JSON parsing use Worker APIs.
   "alias": {
-    "node-libcurl": "./src/no-libcurl.ts"
+    "vm": "./src/bootstrap.ts",
+    "undici": "./src/no-proxy.ts"
   }
 }

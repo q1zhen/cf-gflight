@@ -1,25 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createQuery, Passengers } from "fast-flights-ts";
-import { parseResults } from "../src/results";
+import { createQuery, parseFlightsPayload } from "google-flights-scraper";
+import { googleFlightsUrl } from "../src/selection";
+import { leg, payload, row, segment } from "./fixtures";
 
-const outbound = { date: "2027-01-20", from_airport: "JFK", to_airport: "LAX" };
-const inbound = { date: "2027-01-27", from_airport: "LAX", to_airport: "JFK" };
-const query = createQuery({ flights: [outbound], currency: "USD", language: "en-US" });
-
-function segment(number = "1", from = "JFK", to = "LAX", date = [2027, 1, 20]) {
-  const value: unknown[] = [];
-  value[3] = from;
-  value[6] = to;
-  value[20] = date;
-  value[22] = ["AA", number];
-  return value;
-}
-
-const row = (segments: unknown[], price = 129) => [["AA", ["American"], segments], [[null, price]]];
-function html(best: unknown[], other: unknown[] = []) {
-  const payload = [null, null, [best], [other], null, null, null, [null, [[], [["AA", "American"]]]]];
-  return `<script class="ds:1">AF_initDataCallback({data:${JSON.stringify(payload)},sideChannel:{}});</script>`;
-}
+const query = createQuery({ flights: [leg], currency: "USD", language: "en-US" });
+const parsed = (segments: unknown[][]) => parseFlightsPayload(payload([row(segments)])).flights[0].segments;
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const tokenBytes = (url: URL) => Uint8Array.from(
@@ -50,60 +35,41 @@ function fields(bytes: Uint8Array) {
 }
 
 describe("Google Flights detail links", () => {
-  it("matches a one-way URL verified on Google's booking page", () => {
-    const { flights, metadata } = parseResults(html([row([segment()])]), query);
-    expect(flights[0].google_flights_url).toBe(
+  it("preserves the previously verified one-way booking URL", () => {
+    expect(googleFlightsUrl(query, parsed([segment()]))).toBe(
       "https://www.google.com/travel/flights/booking?tfs=CBwQAho5EgoyMDI3LTAxLTIwagUSA0pGS3IFEgNMQVgiHQoDSkZLEgoyMDI3LTAxLTIwGgNMQVgqAkFBMgExQgEBSAGYAQJwAQ&hl=en-US&curr=USD",
     );
-    expect(flights[0].price).toBe(129);
-    expect(metadata.airlines).toEqual([{ code: "AA", name: "American" }]);
   });
 
-  it("pins every connection, including a next-day departure", () => {
-    const connections = [segment("1234", "JFK", "ORD"), segment("5678", "ORD", "DEN"), segment("9012", "DEN", "LAX", [2027, 1, 21])];
-    const url = new URL(parseResults(html([row(connections)]), query).flights[0].google_flights_url!);
-    const info = fields(tokenBytes(url));
-    const selected = fields(info.get(3)![0] as Uint8Array).get(4)!;
-    expect(selected).toHaveLength(3);
-    expect(selected.map((leg) => text(fields(leg as Uint8Array).get(6)![0] as Uint8Array))).toEqual(["1234", "5678", "9012"]);
-    expect(text(fields(selected[2] as Uint8Array).get(2)![0] as Uint8Array)).toBe("2027-01-21");
+  it("pins every connection and next-day departure", () => {
+    const segments = parsed([segment("1234", "JFK", "ORD"), segment("5678", "ORD", "LAX", 9, [2027, 1, 21])]);
+    const url = new URL(googleFlightsUrl(query, segments)!);
+    const selected = fields(fields(tokenBytes(url)).get(3)![0] as Uint8Array).get(4)!;
+    expect(selected).toHaveLength(2);
+    expect(selected.map((s) => text(fields(s as Uint8Array).get(6)![0] as Uint8Array))).toEqual(["1234", "5678"]);
+    expect(text(fields(selected[1] as Uint8Array).get(2)![0] as Uint8Array)).toBe("2027-01-21");
   });
 
-  it("keeps the round-trip return date, travelers, cabin, locale and filters", () => {
-    const roundTrip = createQuery({
-      flights: [outbound, inbound], trip: "round-trip", seat: "business", max_stops: 1,
-      passengers: new Passengers({ adults: 2, children: 1 }), currency: "EUR", language: "de",
-    });
-    const original = roundTrip.toStr();
-    const url = new URL(parseResults(html([row([segment()])]), roundTrip).flights[0].google_flights_url!);
-    expect(url.pathname).toBe("/travel/flights/search");
+  it("preserves travelers, cabin, locale, region and upstream query filters", () => {
+    const encoded = createQuery({ flights: [{ ...leg, airlines: ["AA"] }], seat: "business", maxStops: 1,
+      passengers: { adults: 2, children: 1 }, currency: "EUR", language: "de", region: "DE" });
+    const original = encoded.tfs;
+    const url = new URL(googleFlightsUrl(encoded, parsed([segment()]))!);
     expect(url.searchParams.get("curr")).toBe("EUR");
     expect(url.searchParams.get("hl")).toBe("de");
+    expect(url.searchParams.get("gl")).toBe("DE");
     const info = fields(tokenBytes(url));
     expect([...info.get(8)![0] as Uint8Array]).toEqual([1, 1, 2]);
     expect(info.get(9)).toEqual([3]);
-    expect(info.get(19)).toEqual([1]);
-    const legs = info.get(3)!;
-    expect(legs).toHaveLength(2);
-    expect(fields(legs[0] as Uint8Array).get(4)).toHaveLength(1);
-    expect(fields(legs[0] as Uint8Array).get(5)).toEqual([1]);
-    expect(fields(legs[1] as Uint8Array).get(4)).toBeUndefined();
-    expect(text(fields(legs[1] as Uint8Array).get(2)![0] as Uint8Array)).toBe(inbound.date);
-    expect(roundTrip.toStr()).toBe(original);
+    const flight = fields(info.get(3)![0] as Uint8Array);
+    expect(flight.get(5)).toEqual([1]);
+    expect(text(flight.get(6)![0] as Uint8Array)).toBe("AA");
+    expect(encoded.tfs).toBe(original);
   });
 
-  it("keeps links aligned across skipped rows and both result groups", () => {
-    const results = parseResults(html([null, row([segment("1")])], [row([segment("2")], 150)]), query);
-    expect(results.flights).toHaveLength(2);
-    expect(results.flights.map((f) => f.price)).toEqual([129, 150]);
-    expect(results.flights[0].google_flights_url).not.toBe(results.flights[1].google_flights_url);
+  it("returns null when flight identifiers are missing or invalid", () => {
+    expect(googleFlightsUrl(query, [])).toBeNull();
+    expect(googleFlightsUrl(query, parsed([segment("")]))).toBeNull();
+    expect(googleFlightsUrl(query, parsed([segment("1", "JFK", "LAX", 9, [2027, 2, 30])]))).toBeNull();
   });
-
-  it.each([[], [segment("")], [segment("1", "JFK", "LAX", [2027, 2, 30])], [null]].map((segments) => ({ segments })))(
-    "returns null for missing or invalid flight identifiers: %j", ({ segments }) => {
-      const results = parseResults(html([row(segments)]), query);
-      expect(results.flights[0].google_flights_url).toBeNull();
-      expect(results.flights[0].price).toBe(129);
-    },
-  );
 });

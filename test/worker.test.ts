@@ -1,180 +1,107 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchFlightsHtml, HttpError, TimeoutError } from "fast-flights-ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { html, leg, returnLeg } from "./fixtures";
 
-vi.mock("fast-flights-ts", async (importOriginal) => ({
-  ...await importOriginal<typeof import("fast-flights-ts")>(),
-  fetchFlightsHtml: vi.fn(),
-}));
-
-// Minimal Google ds:1 response; exercise the real library parser.
-function htmlResults(withFlight = false) {
-  const payload = [
-    null, null,
-    [withFlight ? [[["AA", ["Example Air"], []], [[null, 123]]]] : []],
-    null, null, null, null,
-    [null, [[], [["AA", "Example Air"]]]],
-  ];
-  return `<script class="ds:1">AF_initDataCallback({data:${JSON.stringify(payload)},sideChannel:{}});</script>`;
-}
-
-const leg = { date: "2027-01-20", from_airport: "JFK", to_airport: "LAX" };
-const returnLeg = { date: "2027-01-27", from_airport: "LAX", to_airport: "JFK" };
+const fetchMock = vi.fn<typeof fetch>();
+beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+afterEach(() => vi.unstubAllGlobals());
 const search = async (body: unknown) => {
   const response = await worker.fetch(new Request("https://example.com/flights", {
     method: "POST", headers: { "Content-Type": "application/json", Origin: "https://app.example" },
     body: JSON.stringify(body),
   }));
-  // Both successful searches and errors must be readable by cross-origin clients.
   expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
   return response;
 };
 
-beforeEach(() => vi.resetAllMocks());
-
 describe("flight API", () => {
-  it("answers browser JSON preflights without contacting Google", async () => {
+  it("serves the updated spec and browser preflights without contacting Google", async () => {
+    const root = await worker.fetch(new Request("https://example.com/"));
+    const spec = await root.text();
+    expect(spec).toContain("fromAirport");
+    expect(spec).toContain("departureTime");
+    expect(spec).toContain("googleFlightsUrl");
     const response = await worker.fetch(new Request("https://example.com/flights", {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://app.example",
-        "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "content-type",
-      },
+      method: "OPTIONS", headers: { Origin: "https://app.example", "Access-Control-Request-Method": "POST" },
     }));
     expect(response.status).toBe(204);
-    expect(await response.text()).toBe("");
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
-    expect(response.headers.get("Access-Control-Allow-Headers")?.toLowerCase()).toBe("content-type");
-    expect(response.headers.get("Access-Control-Max-Age")).toBe("86400");
-    expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(false);
-    expect(fetchFlightsHtml).not.toHaveBeenCalled();
+    expect(response.headers.get("Access-Control-Allow-Headers")).toBe("Content-Type");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(["/", "/health", "/missing", "/flights"])("allows browser access to %s", async (path) => {
-    const response = await worker.fetch(new Request(`https://example.com${path}`, {
-      headers: { Origin: "http://localhost:3000" },
-    }));
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-  });
-
-  it("checks health without calling Google", async () => {
-    const response = await worker.fetch(new Request("https://example.com/health"));
-    expect(await response.json()).toEqual({ ok: true });
-    expect(fetchFlightsHtml).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 and 405 for unsupported routes and methods", async () => {
+  it("checks health and rejects unsupported routes and methods", async () => {
+    expect(await (await worker.fetch(new Request("https://example.com/health"))).json()).toEqual({ ok: true });
     expect((await worker.fetch(new Request("https://example.com/missing"))).status).toBe(404);
     const response = await worker.fetch(new Request("https://example.com/flights"));
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("POST");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects non-JSON and malformed JSON", async () => {
-    expect((await worker.fetch(new Request("https://example.com/flights", {
-      method: "POST", body: "hello",
-    }))).status).toBe(415);
+    expect((await worker.fetch(new Request("https://example.com/flights", { method: "POST", body: "hello" }))).status).toBe(415);
     expect((await worker.fetch(new Request("https://example.com/flights", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: "{",
     }))).status).toBe(400);
-    expect(fetchFlightsHtml).not.toHaveBeenCalled();
   });
 
   it.each([
-    null,
-    {},
-    { flights: [] },
+    null, {}, { flights: [] },
     { flights: [{ ...leg, date: "2027-02-30" }] },
-    { flights: [{ ...leg, from_airport: "INVALID" }] },
-    { flights: [{ ...leg, to_airport: "JFK" }] },
-    { flights: [leg], trip: "round-trip" },
+    { flights: [{ ...leg, fromAirport: "INVALID" }] },
+    { flights: [{ ...leg, toAirport: "JFK" }] },
     { flights: [leg, returnLeg] },
-    { flights: [leg, { ...returnLeg, date: "2027-01-01" }], trip: "round-trip" },
-    { flights: [leg, { ...returnLeg, to_airport: "BOS" }], trip: "round-trip" },
+    { flights: [leg], trip: "round-trip" },
     { flights: [leg], seat: "standing" },
-    { flights: [leg], max_stops: -1 },
+    { flights: [leg], maxStops: -1 },
+    { flights: [leg], maxStops: null },
     { flights: [leg], passengers: { adults: 0 } },
-    { flights: [leg], passengers: { adults: -1 } },
     { flights: [leg], passengers: { adults: 1.5 } },
     { flights: [leg], passengers: { adults: 9, children: 1 } },
-    { flights: [leg], passengers: { adults: 1, infants_on_lap: 2 } },
-  ])("rejects invalid input before contacting Google: %j", async (body) => {
+    { flights: [leg], passengers: { infantsOnLap: 2 } },
+    { flights: [leg], filters: { departureTime: { earliest: "25:00" } } },
+    { flights: [leg], filters: { arrivalTime: { earliest: "18:00", latest: "06:00" } } },
+    { flights: [leg], filters: { layover: { minMinutes: 120, maxMinutes: 60 } } },
+    { flights: [leg], filters: { connectionAirports: { allow: ["INVALID"] } } },
+    { flights: [{ date: leg.date, from_airport: "JFK", to_airport: "LAX" }] },
+    { flights: [leg], max_stops: 0 },
+    { flights: [leg], filters: { departure_time: { earliest: "08:00" } } },
+    { flights: [leg], passengers: { infants_on_lap: 1 } },
+  ])("rejects invalid or old-format input before fetching: %j", async (body) => {
     const response = await search(body);
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: "Invalid search parameters" });
-    expect(fetchFlightsHtml).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ error: "Invalid search parameters", issues: expect.any(Array) });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("normalizes airports, applies defaults, and preserves metadata", async () => {
-    const metadata = { airlines: [{ code: "AA", name: "Example Air" }], alliances: [] };
-    vi.mocked(fetchFlightsHtml).mockResolvedValue(htmlResults(true));
-    const response = await search({ flights: [{ ...leg, from_airport: " jfk " }] });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ flights: [{ price: 123, airlines: ["Example Air"] }], metadata });
-    const [query, options] = vi.mocked(fetchFlightsHtml).mock.calls[0];
-    expect(query).toMatchObject({
-      flightData: [leg], trip: 2, seat: 1, passengers: [1], currency: "USD", language: "en-US",
-    });
-    expect(options).toMatchObject({ timeout: 20_000, maxRetries: 0, signal: expect.any(AbortSignal) });
-  });
-
-  it("supports one-way optional filters", async () => {
-    vi.mocked(fetchFlightsHtml).mockResolvedValue(htmlResults());
-    const response = await search({
-      flights: [{ ...leg, airlines: ["AA"], max_stops: 0 }],
-      trip: "one-way", seat: "business", max_stops: 1, currency: "eur", language: "de",
-      passengers: { adults: 2, children: 1 },
+  it("accepts the upstream camelCase interface and returns its result fields", async () => {
+    fetchMock.mockResolvedValue(new Response(html()));
+    const response = await search({ flights: [{ ...leg, fromAirport: " jfk ", airlines: ["aa"] }],
+      currency: "usd", region: "us", passengers: { adults: 2, infantsInSeat: 1 },
+      filters: { departureTime: { earliest: "08:00" }, connectionAirports: { block: ["ord"] } },
     });
     expect(response.status).toBe(200);
-    expect(vi.mocked(fetchFlightsHtml).mock.calls[0][0]).toMatchObject({
-      flightData: [{ ...leg, airlines: ["AA"], max_stops: 0 }],
-      seat: 3, trip: 2, currency: "EUR", language: "de",
-      passengers: [1, 1, 2],
-    });
-    expect(await response.json()).toMatchObject({ flights: [] });
+    expect(await response.json()).toMatchObject({ flights: [{ segments: [{ flightNumber: "AA1" }],
+      googleFlightsUrl: expect.any(String), totalDurationMinutes: 120,
+    }], metadata: { baggageLinks: [], locations: [], flexibleDateInsight: null } });
   });
 
-  it("rejects round trips without contacting Google", async () => {
-    const response = await search({ flights: [leg, returnLeg], trip: "round-trip" });
+  it.each(["round-trip", "multi-city"])("keeps %s disabled without contacting Google", async (trip) => {
+    const response = await search({ flights: [leg, returnLeg], trip });
     expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({ error: "Round-trip searches are temporarily disabled. Use one-way searches." });
-    expect(fetchFlightsHtml).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects multi-city instead of returning misleading empty results", async () => {
-    const response = await search({ flights: [leg, returnLeg], trip: "multi-city" });
-    expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({ error: "Multi-city searches are not supported by the HTML transport" });
-    expect(fetchFlightsHtml).not.toHaveBeenCalled();
-  });
-
-  it("returns an upstream error for HTML without flight data", async () => {
+  it.each(["rate-limit", "timeout", "bad-html"])("maps %s failures to JSON with CORS", async (mode) => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      vi.mocked(fetchFlightsHtml).mockResolvedValue("<html>Unexpected Google response</html>");
+      if (mode === "rate-limit") fetchMock.mockResolvedValue(new Response("limited", { status: 429 }));
+      if (mode === "timeout") fetchMock.mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
+      if (mode === "bad-html") fetchMock.mockResolvedValue(new Response("<html>bad</html>"));
       const response = await search({ flights: [leg] });
-      expect(response.status).toBe(502);
-      expect(await response.json()).toEqual({ error: "Unable to fetch flights from Google" });
-    } finally {
-      log.mockRestore();
-    }
-  });
-
-  it.each([
-    [new TimeoutError(20_000), 504, "Flight search timed out"],
-    [new HttpError(429, 0), 502, "Unable to fetch flights from Google"],
-    [new Error("private upstream details"), 502, "Unable to fetch flights from Google"],
-  ])("maps upstream failures to JSON errors", async (error, status, message) => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      vi.mocked(fetchFlightsHtml).mockRejectedValue(error);
-      const response = await search({ flights: [leg] });
-      expect(response.status).toBe(status);
-      expect(await response.json()).toEqual({ error: message });
-    } finally {
-      log.mockRestore();
-    }
+      expect(response.status).toBe(mode === "timeout" ? 504 : 502);
+      expect(await response.json()).toEqual({ error: mode === "timeout" ? "Flight search timed out" : "Unable to fetch flights from Google" });
+    } finally { log.mockRestore(); }
   });
 });

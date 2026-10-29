@@ -1,4 +1,4 @@
-import { TimeoutError } from "fast-flights-ts";
+import { QueryValidationError, TimeoutError } from "google-flights-scraper";
 import { ZodError } from "zod";
 import { parseQuery } from "./query";
 import { spec } from "./spec";
@@ -37,15 +37,22 @@ async function handleRequest(request: Request): Promise<Response> {
   try {
     query = parseQuery(body);
   } catch (error) {
-    if (!(error instanceof ZodError)) throw error;
-    return Response.json({ error: "Invalid search parameters", issues: error.issues }, { status: 400 });
+    if (error instanceof ZodError) {
+      return Response.json({ error: "Invalid search parameters", issues: error.issues }, { status: 400 });
+    }
+    if (error instanceof QueryValidationError) {
+      return Response.json({ error: "Invalid search parameters", issues: [
+        { code: "custom", path: [], message: error.message },
+      ] }, { status: 400 });
+    }
+    throw error;
   }
 
-  if (query.trip === 1) {
+  if (query.trip === "round-trip") {
     return Response.json({ error: "Round-trip searches are temporarily disabled. Use one-way searches." }, { status: 422 });
   }
-  // The HTML endpoint does not provide multi-city results (Google trip enum 3).
-  if (query.trip === 3) {
+  // The HTML endpoint does not provide multi-city results.
+  if (query.trip === "multi-city") {
     return Response.json({ error: "Multi-city searches are not supported by the HTML transport" }, { status: 422 });
   }
 
