@@ -1,8 +1,8 @@
-import { fetchFlightsHtml, TimeoutError } from "fast-flights-ts";
+import { TimeoutError } from "fast-flights-ts";
 import { ZodError } from "zod";
 import { parseQuery } from "./query";
 import { spec } from "./spec";
-import { parseResults } from "./results";
+import { searchFlights } from "./search";
 
 async function handleRequest(request: Request): Promise<Response> {
   const path = new URL(request.url).pathname;
@@ -47,9 +47,7 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   try {
-    // Google's RPC endpoint returns an error payload from Workers; HTML works.
-    const html = await fetchFlightsHtml(query, { timeout: 20_000, maxRetries: 0 });
-    return Response.json(parseResults(html, query));
+    return Response.json(await searchFlights(query));
   } catch (error) {
     console.error("Flight search failed:", error);
     const timedOut = error instanceof TimeoutError;

@@ -117,7 +117,7 @@ describe("flight API", () => {
     expect(query).toMatchObject({
       flightData: [leg], trip: 2, seat: 1, passengers: [1], currency: "USD", language: "en-US",
     });
-    expect(options).toEqual({ timeout: 20_000, maxRetries: 0 });
+    expect(options).toMatchObject({ timeout: 20_000, maxRetries: 0, signal: expect.any(AbortSignal) });
   });
 
   it("supports round-trip and optional filters", async () => {

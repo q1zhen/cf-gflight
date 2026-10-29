@@ -52,11 +52,15 @@ Dates must be valid `YYYY-MM-DD` dates in chronological order. For a round trip,
 
 The response is `{ "flights": [...], "metadata": { ... } }`, preserving the library's flight records and airline/alliance metadata. An empty result is a successful response with `flights: []`.
 
-Each result includes `google_flights_url`: an itinerary-specific Google Flights link. One-way links open booking details; round-trip links select the outbound flight and open return-flight selection. Links preserve the query's travelers, cabin, dates, language, and currency. The field is `null` if Google omits required flight identifiers. Google may reprice flights when the link opens.
+Round trips expand the **first 20 outbound options in Google's result order**. Each available return option creates a complete itinerary, so the response can contain more than 20 results. Each result adds `outbound` and `return` arrays of segments; `flights` concatenates both directions. `price` is Google's total fare for that exact pair (not a sum of separate quotes). `airlines` combines both directions, `carbon` sums their emissions, and `type` retains the raw outbound identifier. One-way response fields are unchanged.
+
+Each result includes `google_flights_url`: a link to booking details with the complete itinerary selected, including both directions for round trips. Links preserve the query's travelers, cabin, dates, language, and currency. The field is `null` if Google omits required flight identifiers. Google may reprice flights when the link opens.
+
+Round trips use one initial search and up to 20 return lookups, with at most four return lookups in parallel. Outbounds with no return options produce no results. Any failed lookup fails the whole request rather than silently returning partial results. The entire search has a 20-second timeout.
 
 `GET /health` returns `{ "ok": true }` without contacting Google.
 
-Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 422 for unsupported multi-city searches, 502 for upstream failures, and 504 for the 20-second upstream timeout. Searches do not retry.
+Errors are JSON with an `error` field: 400 for invalid input (validation errors also include `issues`), 404 for unknown routes, 405 for unsupported search methods, 415 for non-JSON content, 422 for unsupported multi-city searches, 502 for upstream failures, and 504 for the 20-second overall search timeout. Searches do not retry.
 
 This public API supports browsers and server-side clients. CORS allows all origins, including localhost, with JSON POST preflights handled automatically. Error responses also include CORS headers. No cookies or authentication are required; do not set `credentials: "include"`.
 
