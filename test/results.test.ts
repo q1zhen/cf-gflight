@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createQuery, parseFlightsPayload } from "google-flights-scraper";
-import { googleFlightsUrl } from "../src/selection";
-import { leg, payload, row, segment } from "./fixtures";
+import { googleFlightsUrl, selectFlight } from "../src/selection";
+import { leg, returnLeg, payload, row, segment } from "./fixtures";
 
 const query = createQuery({ flights: [leg], currency: "USD", language: "en-US" });
 const parsed = (segments: unknown[][]) => parseFlightsPayload(payload([row(segments)])).flights[0].segments;
@@ -71,5 +71,36 @@ describe("Google Flights detail links", () => {
     expect(googleFlightsUrl(query, [])).toBeNull();
     expect(googleFlightsUrl(query, parsed([segment("")]))).toBeNull();
     expect(googleFlightsUrl(query, parsed([segment("1", "JFK", "LAX", 9, [2027, 2, 30])]))).toBeNull();
+  });
+
+  it("selects outbound and return connections in separate legs without mutating the query", () => {
+    const encoded = createQuery({ flights: [leg, { ...returnLeg, maxStops: 1, airlines: ["AA"] }],
+      trip: "round-trip", seat: "business", passengers: { adults: 2 }, currency: "EUR", region: "DE" });
+    const outbound = selectFlight(encoded, parsed([segment("10")]))!;
+    const original = outbound.tfs;
+    const url = new URL(googleFlightsUrl(outbound, parsed([
+      segment("20", "LAX", "ORD", 9, [2027, 1, 27]),
+      segment("21", "ORD", "JFK", 9, [2027, 1, 28]),
+    ]), 1)!);
+    expect(new URL(outbound.url).pathname).toBe("/travel/flights/search");
+    const info = fields(tokenBytes(url));
+    const legs = info.get(3)!.map((leg) => fields(leg as Uint8Array));
+    expect(legs.map((leg) => leg.get(4)!.length)).toEqual([1, 2]);
+    expect(legs.map((leg) => leg.get(4)!.map((s) => text(fields(s as Uint8Array).get(6)![0] as Uint8Array))))
+      .toEqual([["10"], ["20", "21"]]);
+    expect(legs[1].get(5)).toEqual([1]);
+    expect(text(legs[1].get(6)![0] as Uint8Array)).toBe("AA");
+    expect(info.get(1)).toEqual([28]);
+    expect(info.get(2)).toEqual([2]);
+    expect(info.get(14)).toEqual([1]);
+    expect(info.get(19)).toEqual([1]);
+    expect(info.get(9)).toEqual([3]);
+    expect([...info.get(8)![0] as Uint8Array]).toEqual([1, 1]);
+    expect(url.searchParams.get("curr")).toBe("EUR");
+    expect(url.searchParams.get("gl")).toBe("DE");
+    expect(outbound.tfs).toBe(original);
+    expect(fields(tokenBytes(new URL(encoded.url))).get(3)!.map((leg) => fields(leg as Uint8Array).has(4)))
+      .toEqual([false, false]);
+    expect(() => selectFlight(encoded, parsed([segment()]), 2)).toThrow("Missing query direction");
   });
 });

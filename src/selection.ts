@@ -39,25 +39,47 @@ function encodeSelection(segments: FlightSegment[]): number[] | null {
   return selected;
 }
 
-export function googleFlightsUrl(query: EncodedQuery, segments: FlightSegment[]): string | null {
+// Pin one direction while preserving any earlier selection, travelers and filters.
+export function selectFlight(query: EncodedQuery, segments: FlightSegment[], direction = 0): EncodedQuery | null {
   const selection = encodeSelection(segments);
   if (!selection) return null;
-  const bytes = [...Uint8Array.from(atob(query.tfs), (char) => char.charCodeAt(0))];
-  let offset = 0;
+  const bytes = [...Uint8Array.from(atob(query.tfs.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0))];
+  let offset = 0, index = 0;
   const read = () => {
     let value = 0, shift = 0, byte;
-    do { byte = bytes[offset++]; value |= (byte & 127) << shift; shift += 7; } while (byte & 128);
+    do {
+      if (offset >= bytes.length || shift > 28) throw new Error("Unexpected upstream query encoding");
+      byte = bytes[offset++]; value |= (byte & 127) << shift; shift += 7;
+    } while (byte & 128);
     return value;
   };
-  // The upstream encoder puts the one-way leg in the first field-3 message.
-  if (read() !== 26) throw new Error("Unexpected upstream query encoding");
-  const length = read();
-  const end = offset + length;
-  const token = [8, 28, 16, 2,
-    ...field(3, [...bytes.slice(offset, end), ...selection]), ...bytes.slice(end), 112, 1];
-  const tfs = btoa(String.fromCharCode(...token)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  const url = new URL("https://www.google.com/travel/flights/booking");
-  url.search = new URLSearchParams(query.params).toString();
-  url.searchParams.set("tfs", tfs);
+  while (offset < bytes.length) {
+    const start = offset;
+    const tag = read();
+    if ((tag & 7) === 0) { read(); continue; }
+    if ((tag & 7) !== 2) throw new Error("Unexpected upstream query encoding");
+    const length = read();
+    const end = offset + length;
+    if (length < 0 || end > bytes.length) throw new Error("Unexpected upstream query encoding");
+    if (tag === 26 && index++ === direction) {
+      const selected = [...bytes.slice(0, start),
+        ...field(3, [...bytes.slice(offset, end), ...selection]), ...bytes.slice(end)];
+      // createQuery omits Google's page envelope; add it only on the first selection.
+      const token = bytes[0] === 26 ? [8, 28, 16, 2, ...selected, 112, 1] : selected;
+      const tfs = btoa(String.fromCharCode(...token)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const params = new URLSearchParams(query.params);
+      params.set("tfs", tfs);
+      return { ...query, tfs, params, url: `https://www.google.com/travel/flights/search?${params}` };
+    }
+    offset = end;
+  }
+  throw new Error("Missing query direction");
+}
+
+export function googleFlightsUrl(query: EncodedQuery, segments: FlightSegment[], direction = 0): string | null {
+  const selected = selectFlight(query, segments, direction);
+  if (!selected) return null;
+  const url = new URL(selected.url);
+  url.pathname = "/travel/flights/booking";
   return url.toString();
 }
