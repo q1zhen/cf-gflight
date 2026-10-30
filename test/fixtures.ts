@@ -25,6 +25,8 @@ export function payload(rows: unknown[]) {
   return [null, null, null, [rows], null, null, null, [null, [[], [["AA", "American"]]]]];
 }
 
-export function html(rows: unknown[] = [row()]) {
-  return `<script class="ds:1">AF_initDataCallback({key: 'ds:1',hash: 'test',data:${JSON.stringify(payload(rows))},sideChannel:{}});</script>`;
+export function html(rows: unknown[] = [row()], secondaryRows: unknown[] = []) {
+  const data = payload(rows);
+  if (secondaryRows.length) data[2] = [secondaryRows];
+  return `<script class="ds:1">AF_initDataCallback({key: 'ds:1',hash: 'test',data:${JSON.stringify(data)},sideChannel:{}});</script>`;
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { html, leg, returnLeg } from "./fixtures";
+import { html, leg, returnLeg, row, segment } from "./fixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
@@ -53,6 +53,9 @@ describe("flight API", () => {
     { flights: [{ ...leg, toAirport: "JFK" }] },
     { flights: [leg, returnLeg] },
     { flights: [leg], trip: "round-trip" },
+    { flights: [leg, leg, returnLeg], trip: "round-trip" },
+    { flights: [leg, { ...returnLeg, toAirport: "BOS" }], trip: "round-trip" },
+    { flights: [leg, { ...returnLeg, date: "2027-01-19" }], trip: "round-trip" },
     { flights: [leg], seat: "standing" },
     { flights: [leg], maxStops: -1 },
     { flights: [leg], maxStops: null },
@@ -87,8 +90,21 @@ describe("flight API", () => {
     }], metadata: { baggageLinks: [], locations: [], flexibleDateInsight: null } });
   });
 
-  it.each(["round-trip", "multi-city"])("keeps %s disabled without contacting Google", async (trip) => {
-    const response = await search({ flights: [leg, returnLeg], trip });
+  it("returns complete round trips with a combined fare and booking URL", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(html()))
+      .mockResolvedValueOnce(new Response(html([row([segment("2", "LAX", "JFK", 9, [2027, 1, 27])], [], 250)])));
+    const response = await search({ flights: [leg, returnLeg], trip: "round-trip" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ flights: [{ price: 250,
+      segments: [{ flightNumber: "AA1" }, { flightNumber: "AA2" }],
+      outbound: [{ flightNumber: "AA1" }], return: [{ flightNumber: "AA2" }],
+      googleFlightsUrl: expect.any(String),
+    }] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps multi-city disabled without contacting Google", async () => {
+    const response = await search({ flights: [leg, returnLeg], trip: "multi-city" });
     expect(response.status).toBe(422);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -102,6 +118,20 @@ describe("flight API", () => {
       const response = await search({ flights: [leg] });
       expect(response.status).toBe(mode === "timeout" ? 504 : 502);
       expect(await response.json()).toEqual({ error: mode === "timeout" ? "Flight search timed out" : "Unable to fetch flights from Google" });
+    } finally { log.mockRestore(); }
+  });
+
+  it.each(["rate-limit", "timeout", "bad-html"])("maps return lookup %s failures without returning partial trips", async (mode) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      fetchMock.mockResolvedValueOnce(new Response(html()));
+      if (mode === "rate-limit") fetchMock.mockResolvedValueOnce(new Response("limited", { status: 429 }));
+      if (mode === "timeout") fetchMock.mockRejectedValueOnce(new DOMException("Timed out", "TimeoutError"));
+      if (mode === "bad-html") fetchMock.mockResolvedValueOnce(new Response("<html>bad</html>"));
+      const response = await search({ flights: [leg, returnLeg], trip: "round-trip" });
+      expect(response.status).toBe(mode === "timeout" ? 504 : 502);
+      expect(await response.json()).toEqual({ error: mode === "timeout" ? "Flight search timed out" : "Unable to fetch flights from Google" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally { log.mockRestore(); }
   });
 });

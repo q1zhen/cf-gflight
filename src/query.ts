@@ -47,6 +47,12 @@ const searchSchema = z.strictObject({
   if (input.flights.some((flight, i) => i > 0 && flight.date < input.flights[i - 1].date)) {
     ctx.addIssue({ code: "custom", path: ["flights"], message: "Flight dates must be chronological." });
   }
+  if (input.trip === "round-trip" && input.flights.length === 2) {
+    const [outbound, inbound] = input.flights;
+    if (outbound.fromAirport !== inbound.toAirport || outbound.toAirport !== inbound.fromAirport) {
+      ctx.addIssue({ code: "custom", path: ["flights", 1], message: "The return leg must reverse the outbound airports." });
+    }
+  }
 });
 
 export function parseQuery(body: unknown): StructuredQueryInput {

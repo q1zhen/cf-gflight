@@ -48,9 +48,6 @@ async function handleRequest(request: Request): Promise<Response> {
     throw error;
   }
 
-  if (query.trip === "round-trip") {
-    return Response.json({ error: "Round-trip searches are temporarily disabled. Use one-way searches." }, { status: 422 });
-  }
   // The HTML endpoint does not provide multi-city results.
   if (query.trip === "multi-city") {
     return Response.json({ error: "Multi-city searches are not supported by the HTML transport" }, { status: 422 });

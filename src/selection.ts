@@ -1,4 +1,4 @@
-import type { EncodedQuery, FlightSegment } from "google-flights-scraper";
+import { decodeQuery, type EncodedQuery, type FlightSegment } from "google-flights-scraper";
 
 function varint(value: number): number[] {
   const bytes: number[] = [];
@@ -64,9 +64,9 @@ export function selectFlight(query: EncodedQuery, segments: FlightSegment[], dir
     if (tag === 26 && index++ === direction) {
       const selected = [...bytes.slice(0, start),
         ...field(3, [...bytes.slice(offset, end), ...selection]), ...bytes.slice(end)];
-      // createQuery omits Google's page envelope; add it only on the first selection.
-      const token = bytes[0] === 26 ? [8, 28, 16, 2, ...selected, 112, 1] : selected;
-      const tfs = btoa(String.fromCharCode(...token)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      // Keep the upstream query format. Adding page flags to this compact format
+      // makes Google reject round-trip return searches with an ErrorResponse.
+      const tfs = btoa(String.fromCharCode(...selected)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       const params = new URLSearchParams(query.params);
       params.set("tfs", tfs);
       return { ...query, tfs, params, url: `https://www.google.com/travel/flights/search?${params}` };
@@ -81,5 +81,11 @@ export function googleFlightsUrl(query: EncodedQuery, segments: FlightSegment[],
   if (!selected) return null;
   const url = new URL(selected.url);
   url.pathname = "/travel/flights/booking";
+  // Preserve the existing one-way booking link format.
+  if (decodeQuery(query.tfs).trip === "one-way") {
+    const bytes = [...Uint8Array.from(atob(selected.tfs.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0))];
+    url.searchParams.set("tfs", btoa(String.fromCharCode(8, 28, 16, 2, ...bytes, 112, 1))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
+  }
   return url.toString();
 }

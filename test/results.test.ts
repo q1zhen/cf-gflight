@@ -90,9 +90,9 @@ describe("Google Flights detail links", () => {
       .toEqual([["10"], ["20", "21"]]);
     expect(legs[1].get(5)).toEqual([1]);
     expect(text(legs[1].get(6)![0] as Uint8Array)).toBe("AA");
-    expect(info.get(1)).toEqual([28]);
-    expect(info.get(2)).toEqual([2]);
-    expect(info.get(14)).toEqual([1]);
+    expect(info.has(1)).toBe(false);
+    expect(info.has(2)).toBe(false);
+    expect(info.has(14)).toBe(false);
     expect(info.get(19)).toEqual([1]);
     expect(info.get(9)).toEqual([3]);
     expect([...info.get(8)![0] as Uint8Array]).toEqual([1, 1]);
