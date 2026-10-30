@@ -123,3 +123,12 @@ git push origin main  # Cloudflare CI builds and deploys automatically
 Wrangler aliases the upstream HTML parser's `node:vm` helper to a small JSON-only bootstrap reader. It never evaluates downloaded JavaScript. The unused `undici` proxy helper is stubbed; proxies are not exposed by this API. A fetch adapter passes only the flight-data script to the parser when present, avoiding upstream 0.2.0’s false CAPTCHA detection on shared page scripts, and rejects Google's explicit error payloads. For round trips it includes both recommended and other result sections. All filtering and flight-result parsing use the upstream package. Round-trip metadata combines airlines, alliances, baggage resources and locations from each lookup; flexible-date insights remain those of the initial search. The HTML transport is fixed because Google's RPC endpoint previously failed from Workers.
 
 Google may rate-limit or block requests, and changes to its internal payload can break the scraper.
+
+## Manual Claude codebase review
+
+In GitHub, open **Actions → Claude Code Review → Run workflow**, select the branch to
+review (normally `main`), and run it. Claude reviews the entire codebase, makes focused
+fixes, runs the checks, and opens a PR back to the selected branch. If it finds nothing
+actionable, it reports that in the run without opening an empty PR. This uses the
+existing Claude GitHub App installation and `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
+The workflow must be on the default branch for the manual trigger to appear.
