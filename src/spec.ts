@@ -6,14 +6,14 @@ POST /flights
 Content-Type: application/json
 
 JSON parameters (camelCase; unknown fields are rejected)
-  flights             Required array containing exactly 1 leg:
+  flights             Required array: 1 leg for one-way, 2 for round-trip:
     date              Required YYYY-MM-DD date.
     fromAirport       Required 3-letter airport or city/metro code, e.g. JFK.
     toAirport         Required 3-letter airport or city/metro code, e.g. LAX.
     maxStops          Optional non-negative integer; overrides top-level maxStops.
     airlines          Optional array of airline or alliance codes, e.g.
                       ["AA"] or ["STAR_ALLIANCE"]. Maximum 50 entries.
-  trip                one-way (default; only supported trip type).
+  trip                one-way (default) | round-trip
   seat                economy (default) | premium-economy | business | first
   passengers          Optional object of integer counts from 0–9:
     adults            Default: 1
@@ -35,7 +35,8 @@ JSON parameters (camelCase; unknown fields are rejected)
 Rules and filter behavior
   Use 1–9 passengers total, with an adult for each infant on lap.
   Departure and arrival airports must differ. Codes normalize to uppercase.
-  Round-trip searches remain temporarily disabled (422); multi-city is unsupported (422).
+  Round-trip return airports must reverse the outbound airports; dates must be
+  chronological (same-day returns are allowed). Multi-city is unsupported (422).
   Time, layover and connection filters run on the returned results; they do not
   fetch additional matches. Times are inclusive local airport times in 24-hour
   HH:MM format: first departure and final arrival. earliest must be <= latest;
@@ -43,8 +44,12 @@ Rules and filter behavior
   Layover limits are non-negative integer minutes and apply to EVERY layover.
   All connections must be in allow (when nonempty), and none may be in block.
   Connection lists accept up to 50 codes. Nonstop flights pass layover/connection filters.
-  Each search makes one Google HTML request, with no retries or result cache.
-  Searches time out after 20 seconds.
+  Round-trip filters apply independently to both directions.
+  One-way searches make one Google HTML request. Round trips select up to 20
+  matching outbounds (recommended choices first, then other choices) and fetch
+  all returned matches for each: at most 21 requests, four return lookups at once.
+  There are no retries or result cache. The whole search times out after 20 seconds.
+  Any failed lookup fails the entire search; partial results are never returned.
 
 Example JSON body
 {
@@ -56,6 +61,17 @@ Example JSON body
   "region": "US",
   "maxStops": 0,
   "filters": { "departureTime": { "earliest": "08:00", "latest": "18:00" } }
+}
+
+Round-trip example JSON body
+{
+  "trip": "round-trip",
+  "flights": [
+    { "date": "2027-01-20", "fromAirport": "JFK", "toAirport": "LAX" },
+    { "date": "2027-01-27", "fromAirport": "LAX", "toAirport": "JFK" }
+  ],
+  "currency": "USD",
+  "maxStops": 0
 }
 
 Success response (200, application/json)
@@ -126,6 +142,22 @@ Success response (200, application/json)
   language, currency and region. It is null when flight identifiers are missing.
   Prices and availability may change when opening the link.
   Metadata, including flexible-date insights, is not narrowed by post-search filters.
+
+Round-trip response additions and semantics
+  Each result adds outbound and return arrays containing that direction's segments.
+  segments contains outbound segments followed by return segments.
+  price is Google's total fare for the pair from the return-selection response;
+  outbound and return prices are NOT added together.
+  Duration, stops, layovers and carbon combine both directions, excluding the stay.
+  googleFlightsUrl selects both directions. type and bookingToken come from the
+  return-selection response; the token alone does not describe the complete trip.
+  Conflicting refundability codes become null. checkedBaggageIncluded is false if
+  either direction says false, true if both say true, and otherwise null.
+  Carrier/baggage resources and metadata lists combine both directions without
+  duplicates. Flexible-date insights remain those from the initial search.
+  Results follow outbound order, then Google's return order; they are not globally
+  sorted by price and do not exhaust all possible trips beyond the 20-outbound cap.
+  Outbounds with no matching returns contribute no results.
 
 Migration from the previous API (breaking change)
   from_airport -> fromAirport; to_airport -> toAirport; max_stops -> maxStops

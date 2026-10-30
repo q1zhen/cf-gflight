@@ -30,7 +30,8 @@ Only `flights` is required. Defaults are one-way, economy and one adult. Omit `m
 
 Supported query fields match upstream `StructuredQueryInput`:
 
-- `flights`: exactly one leg with `date`, `fromAirport`, `toAirport`, optional `maxStops` and `airlines` (airline or alliance codes).
+- `flights`: one leg for one-way, or two legs for round-trip, with `date`, `fromAirport`, `toAirport`, optional `maxStops` and `airlines` (airline or alliance codes).
+- `trip`: `one-way` (default) or `round-trip`. A round-trip return leg must reverse the outbound airport codes and depart on or after the outbound date.
 - `seat`: `economy`, `premium-economy`, `business`, or `first`.
 - `passengers`: `adults`, `children`, `infantsInSeat`, `infantsOnLap`; 1–9 total, with one adult per lap infant.
 - `currency`, `language`, `region`, and top-level `maxStops`.
@@ -38,11 +39,33 @@ Supported query fields match upstream `StructuredQueryInput`:
 - `filters.layover`: `minMinutes`/`maxMinutes`, non-negative integers applied to each layover.
 - `filters.connectionAirports`: `allow`/`block` arrays of airport codes; every connection must be allowed and none blocked. Nonstop flights pass these and layover filters.
 
-Time, layover and connection filters run after parsing Google's results. They do not retrieve additional matches. Metadata remains unfiltered. Round-trip searches remain temporarily disabled; multi-city is unsupported. Valid requests for either return **422** before contacting Google.
+Time, layover and connection filters run after parsing Google's results. They do not retrieve additional matches. For round trips, the same filters apply independently to each direction. Metadata remains unfiltered. Multi-city is unsupported; valid multi-city requests return **422** before contacting Google.
+
+### Round trips
+
+```sh
+curl https://cf-gflight.qizhen-yang.workers.dev/flights \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "trip": "round-trip",
+    "flights": [
+      { "date": "2027-01-20", "fromAirport": "JFK", "toAirport": "LAX" },
+      { "date": "2027-01-27", "fromAirport": "LAX", "toAirport": "JFK" }
+    ],
+    "currency": "USD",
+    "maxStops": 0
+  }'
+```
+
+Google first returns outbound choices. The API selects up to 20 matching outbounds, in Google's recommended-then-other order, and retrieves all returned matches for each. This takes at most 21 HTML requests, with four return lookups at a time, no retries or cache, and a **20-second deadline for the whole search**. Results are grouped by outbound order and are not globally price-sorted. This bounded search is not an exhaustive list of all possible trips.
+
+Each round-trip result contains both directions in `segments`, plus `outbound` and `return` segment arrays. `price` is Google's total fare for that pair, not a sum of two one-way prices. Duration, stops, layovers and carbon totals combine both directions; the stay at the destination is excluded. `googleFlightsUrl` selects both directions. Fare-policy hints combine conservatively: conflicting refundability codes become `null`, and checked baggage is `true` only when both directions say it is included. `type` and `bookingToken` come from the return-selection result; the token alone does not describe the full trip.
+
+An outbound with no matching returns contributes no results. Any failed lookup fails the entire search with **502** or **504**, so an error cannot silently become a partial list of trips.
 
 ## Response
 
-The response follows upstream `FlightsSearchResult`: `{ "flights": [...], "metadata": { ... } }`.
+The response extends upstream `FlightsSearchResult`: `{ "flights": [...], "metadata": { ... } }`.
 
 Each result includes `price`, `airlines`, `segments`, `totalDurationMinutes`, `stopCount`, `layovers`, `carbon`, `farePolicy`, `bookingToken`, `carrierLinks`, and `baggageLinks`. Segment dates/times are objects: `{ "date": { "year": 2027, "month": 1, "day": 20 }, "time": { "hour": 9, "minute": 0 } }`. Metadata includes airlines, alliances, baggage links, locations and nullable flexible-date insights.
 
@@ -97,6 +120,6 @@ npm run build         # bundle only
 git push origin main  # Cloudflare CI builds and deploys automatically
 ```
 
-Wrangler aliases the upstream HTML parser's `node:vm` helper to a small JSON-only bootstrap reader. It never evaluates downloaded JavaScript. The unused `undici` proxy helper is stubbed; proxies are not exposed by this API. A fetch adapter passes only the flight-data script to the parser when present, avoiding upstream 0.2.0’s false CAPTCHA detection on shared page scripts. Actual CAPTCHA/error pages retain upstream error handling. All filtering and flight-result parsing use the upstream package. The HTML transport is fixed because Google's RPC endpoint previously failed from Workers.
+Wrangler aliases the upstream HTML parser's `node:vm` helper to a small JSON-only bootstrap reader. It never evaluates downloaded JavaScript. The unused `undici` proxy helper is stubbed; proxies are not exposed by this API. A fetch adapter passes only the flight-data script to the parser when present, avoiding upstream 0.2.0’s false CAPTCHA detection on shared page scripts, and rejects Google's explicit error payloads. For round trips it includes both recommended and other result sections. All filtering and flight-result parsing use the upstream package. Round-trip metadata combines airlines, alliances, baggage resources and locations from each lookup; flexible-date insights remain those of the initial search. The HTML transport is fixed because Google's RPC endpoint previously failed from Workers.
 
 Google may rate-limit or block requests, and changes to its internal payload can break the scraper.
