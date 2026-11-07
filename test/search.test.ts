@@ -50,6 +50,19 @@ describe("upstream integration", () => {
     expect(blocked.flights.map((f) => f.segments[0].flightNumber)).toEqual(["AA3"]);
   });
 
+  it("includes Google's recommended one-way flights before other flights", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(html([row([segment("1")]), row([segment("2")])], [row([segment("7")])])))
+      .mockResolvedValueOnce(new Response(html([], [row([segment("8", "JFK", "LAX", 7)]), row([segment("9")])])));
+    const mixed = await searchFlights({ flights: [leg] });
+    expect(flightsSearchResultSchema.safeParse(mixed).success).toBe(true);
+    expect(mixed.flights.map((f) => f.segments[0].flightNumber)).toEqual(["AA7", "AA1", "AA2"]);
+    expect(mixed.flights.every((f) => f.googleFlightsUrl?.includes("/travel/flights/booking?"))).toBe(true);
+    // Pages can contain only recommended flights; filters still apply to them.
+    const recommendedOnly = await searchFlights({ flights: [leg], filters: { departureTime: { earliest: "08:00" } } });
+    expect(recommendedOnly.flights.map((f) => f.segments[0].flightNumber)).toEqual(["AA9"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("returns empty results and metadata when filters exclude every flight", async () => {
     fetchMock.mockResolvedValue(new Response(html()));
     const result = await searchFlights({ flights: [leg], filters: { departureTime: { earliest: "18:00" } } });

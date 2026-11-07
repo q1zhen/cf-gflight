@@ -67,7 +67,7 @@ An outbound with no matching returns contributes no results. Any failed lookup f
 
 The response extends upstream `FlightsSearchResult`: `{ "flights": [...], "metadata": { ... } }`.
 
-Each result includes `price`, `airlines`, `segments`, `totalDurationMinutes`, `stopCount`, `layovers`, `carbon`, `farePolicy`, `bookingToken`, `carrierLinks`, and `baggageLinks`. Segment dates/times are objects: `{ "date": { "year": 2027, "month": 1, "day": 20 }, "time": { "hour": 9, "minute": 0 } }`. Metadata includes airlines, alliances, baggage links, locations and nullable flexible-date insights.
+Results list Google's recommended flights first, then its other flights. Each result includes `price`, `airlines`, `segments`, `totalDurationMinutes`, `stopCount`, `layovers`, `carbon`, `farePolicy`, `bookingToken`, `carrierLinks`, and `baggageLinks`. Segment dates/times are objects: `{ "date": { "year": 2027, "month": 1, "day": 20 }, "time": { "hour": 9, "minute": 0 } }`. Metadata includes airlines, alliances, baggage links, locations and nullable flexible-date insights.
 
 The API adds `googleFlightsUrl` to each result, selecting that itinerary on Google's booking page while preserving travelers, cabin and locale settings. It is `null` if required identifiers are missing. Carrier links can be support/baggage resources rather than booking links. Fare-policy hints are best-effort, and fares may change.
 
@@ -120,7 +120,7 @@ npm run build         # bundle only
 git push origin main  # Cloudflare CI builds and deploys automatically
 ```
 
-Wrangler aliases the upstream HTML parser's `node:vm` helper to a small JSON-only bootstrap reader. It never evaluates downloaded JavaScript. The unused `undici` proxy helper is stubbed; proxies are not exposed by this API. A fetch adapter passes only the flight-data script to the parser when present, avoiding upstream 0.2.0’s false CAPTCHA detection on shared page scripts, and rejects Google's explicit error payloads. For round trips it includes both recommended and other result sections. All filtering and flight-result parsing use the upstream package. Round-trip metadata combines airlines, alliances, baggage resources and locations from each lookup; flexible-date insights remain those of the initial search. The HTML transport is fixed because Google's RPC endpoint previously failed from Workers.
+Wrangler aliases the upstream HTML parser's `node:vm` helper to a small JSON-only bootstrap reader. It never evaluates downloaded JavaScript. The unused `undici` proxy helper is stubbed; proxies are not exposed by this API. A fetch adapter passes only the flight-data script to the parser when present, avoiding upstream 0.2.0’s false CAPTCHA detection on shared page scripts, and rejects Google's explicit error payloads. It includes both the recommended and other result sections, because upstream 0.2.0's HTML parser reads only the latter. All filtering and flight-result parsing use the upstream package. Round-trip metadata combines airlines, alliances, baggage resources and locations from each lookup; flexible-date insights remain those of the initial search. The HTML transport is fixed because Google's RPC endpoint previously failed from Workers.
 
 Google may rate-limit or block requests, and changes to its internal payload can break the scraper.
 

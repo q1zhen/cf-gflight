@@ -32,10 +32,32 @@ describe("flight API", () => {
 
   it("checks health and rejects unsupported routes and methods", async () => {
     expect(await (await worker.fetch(new Request("https://example.com/health"))).json()).toEqual({ ok: true });
-    expect((await worker.fetch(new Request("https://example.com/missing"))).status).toBe(404);
+    const missing = await worker.fetch(new Request("https://example.com/missing", { method: "POST" }));
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("Access-Control-Allow-Origin")).toBe("*");
     const response = await worker.fetch(new Request("https://example.com/flights"));
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("POST");
+    expect(await response.json()).toEqual({ error: "Use POST /flights" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("serves HEAD / without a body", async () => {
+    const response = await worker.fetch(new Request("https://example.com/", { method: "HEAD" }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(await response.text()).toBe("");
+  });
+
+  it.each([
+    ["POST", "/", "GET, HEAD"], ["DELETE", "/", "GET, HEAD"],
+    ["HEAD", "/health", "GET"], ["POST", "/health", "GET"], ["PUT", "/flights", "POST"],
+  ])("returns 405 for %s %s on a known route", async (method, path, allow) => {
+    const response = await worker.fetch(new Request(`https://example.com${path}`, { method }));
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe(allow);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    if (method !== "HEAD") expect(await response.json()).toMatchObject({ error: expect.any(String) });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
