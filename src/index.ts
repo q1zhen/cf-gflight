@@ -4,23 +4,26 @@ import { parseQuery } from "./query";
 import { spec } from "./spec";
 import { searchFlights } from "./search";
 
+const routes = new Map([["/", ["GET", "HEAD"]], ["/health", ["GET"]], ["/flights", ["POST"]]]);
+
 async function handleRequest(request: Request): Promise<Response> {
   const path = new URL(request.url).pathname;
-  if (path === "/" && (request.method === "GET" || request.method === "HEAD")) {
+  const methods = routes.get(path);
+  if (!methods) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!methods.includes(request.method)) {
+    return Response.json({ error: `Use ${methods.join(" or ")} ${path}` }, {
+      status: 405, headers: { Allow: methods.join(", ") },
+    });
+  }
+  if (path === "/") {
     return new Response(request.method === "HEAD" ? null : spec, {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
-  if (path === "/health" && request.method === "GET") {
+  if (path === "/health") {
     return Response.json({ ok: true });
-  }
-  if (path !== "/flights") {
-    return Response.json({ error: "Not found" }, { status: 404 });
-  }
-  if (request.method !== "POST") {
-    return Response.json({ error: "Use POST /flights" }, {
-      status: 405, headers: { Allow: "POST" },
-    });
   }
   if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
     return Response.json({ error: "Content-Type must be application/json" }, { status: 415 });

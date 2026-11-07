@@ -134,6 +134,7 @@ Success response (200, application/json)
 
   This notation describes types; actual responses are JSON. ? means optional.
   Timestamp values use local airport time; no UTC offset is included.
+  Flights list Google's recommended choices first, then its other choices.
   An empty search returns flights: []; metadata may still be populated.
   Missing upstream values may be 0, empty strings or empty arrays.
   Fare-policy fields are best-effort hints, not guaranteed fare conditions.

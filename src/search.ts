@@ -58,7 +58,7 @@ export async function searchFlights(query: StructuredQueryInput) {
   const encoded = createQuery(query);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new TimeoutError("Flight search timed out")), SEARCH_TIMEOUT_MS);
-  const fetchData = flightDataFetch(query.trip === "round-trip");
+  const fetchData = flightDataFetch();
   const lookup = (selected?: EncodedQuery) => fetchFlights(query, {
     // Keep the structured query so upstream post-search filters apply to each
     // direction. EncodedQuery alone loses those filters in upstream 0.2.0.
