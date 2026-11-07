@@ -61,4 +61,7 @@ jobs:
             Write the review, check results, and any fix PR URL to GITHUB_STEP_SUMMARY
             and, for a pull request, post them as a comment on the original PR using
             gh pr comment with --repo and --body-file.
-          claude_args: '--dangerously-skip-permissions'
+          claude_args: |
+            --model best
+            --effort xhigh
+            --dangerously-skip-permissions

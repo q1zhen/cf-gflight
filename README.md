@@ -135,7 +135,9 @@ regression tests, reruns the checks, and opens a fix PR against the reviewed bra
 (the source branch for PR reviews). It opens a draft if validation is incomplete and
 does not create a PR when no fixes are needed.
 
-Claude runs with `--dangerously-skip-permissions` and the repository's `GITHUB_TOKEN`
+Claude uses `--model best --effort xhigh`: the best alias selects Fable when available
+to the account, otherwise the latest Opus. It runs with
+`--dangerously-skip-permissions` and the repository's `GITHUB_TOKEN`
 with `permissions: write-all`. GitHub's repository and fork restrictions still apply.
 Authentication uses the existing `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
 Enable **Allow GitHub Actions to create and approve pull requests** in the repository's
