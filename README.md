@@ -127,8 +127,12 @@ Google may rate-limit or block requests, and changes to its internal payload can
 ## Manual Claude codebase review
 
 In GitHub, open **Actions → Claude Code Review → Run workflow**, select the branch to
-review (normally `main`), and run it. Claude reviews the entire codebase, makes focused
-fixes, runs the checks, and opens a PR back to the selected branch. If it finds nothing
-actionable, it reports that in the run without opening an empty PR. This uses the
-existing Claude GitHub App installation and `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
+review (normally `main`), and run it. Claude reads the codebase, runs type checking,
+tests, and the build, exercises documented functionality, and reports findings and
+validation gaps in the run summary. The same workflow reviews pull requests and posts
+a review comment. It does not commit fixes or open PRs.
+
+Claude runs with `--dangerously-skip-permissions` and the repository's `GITHUB_TOKEN`
+with `permissions: write-all`. GitHub's repository and fork restrictions still apply.
+Authentication uses the existing `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
 The workflow must be on the default branch for the manual trigger to appear.
