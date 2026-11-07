@@ -63,6 +63,15 @@ describe("upstream integration", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps escaped </script> text inside the rebuilt flight-data script", async () => {
+    const recommended = row([segment("7")]);
+    (recommended[0] as unknown[])[1] = ["</script> Air"];
+    // Google escapes "<" inside its script; the merged payload must stay escaped.
+    fetchMock.mockResolvedValue(new Response(html([row()], [recommended]).replace("</script> Air", "\\u003c/script\\u003e Air")));
+    const result = await searchFlights({ flights: [leg] });
+    expect(result.flights.map((f) => f.airlines)).toEqual([["</script> Air"], ["American"]]);
+  });
+
   it("returns empty results and metadata when filters exclude every flight", async () => {
     fetchMock.mockResolvedValue(new Response(html()));
     const result = await searchFlights({ flights: [leg], filters: { departureTime: { earliest: "18:00" } } });

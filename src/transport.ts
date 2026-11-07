@@ -22,7 +22,9 @@ export function flightDataFetch(): typeof fetch {
       // alike, and some pages have only that section. Parse both, recommended first.
       data[3] = [[...rows(data[2]), ...rows(data[3])]];
       data[2] = null;
-      script = `<script>AF_initDataCallback({key: 'ds:1',data:${JSON.stringify(data)},sideChannel:{}});</script>`;
+      // Re-escape "<" as Google does, so payload text cannot end the script tag.
+      const json = JSON.stringify(data).replace(/</g, "\\u003c");
+      script = `<script>AF_initDataCallback({key: 'ds:1',data:${json},sideChannel:{}});</script>`;
     }
     return new Response(script ?? html, {
       status: response.status, statusText: response.statusText,
