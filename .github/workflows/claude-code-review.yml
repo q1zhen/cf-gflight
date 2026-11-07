@@ -62,6 +62,6 @@ jobs:
             and, for a pull request, post them as a comment on the original PR using
             gh pr comment with --repo and --body-file.
           claude_args: |
-            --model best
+            --model opus
             --effort xhigh
             --dangerously-skip-permissions
