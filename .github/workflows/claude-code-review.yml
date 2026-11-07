@@ -10,11 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions: write-all
+    env:
+      REVIEW_BASE_BRANCH: ${{ github.head_ref || github.ref_name }}
+      REVIEW_BRANCH: claude/review-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -45,8 +49,16 @@ jobs:
             or local smoke checks as needed. Report anything you could not verify.
 
             Report concrete bugs, regressions, security issues, and missing test coverage
-            with file/line references and suggested fixes. Summarize the checks and their
-            results. This is a review: do not commit, push, open fix PRs, or deploy.
-            Write the review to GITHUB_STEP_SUMMARY and, for a pull request, post it as
-            a PR comment using gh pr comment with --repo and --body-file.
+            with file/line references. If there are actionable findings, create the branch
+            in REVIEW_BRANCH from the checked-out commit, implement focused fixes and
+            regression tests, and rerun all checks. Commit and push that branch, then open
+            a PR against REVIEW_BASE_BRANCH using gh pr create with explicit --repo,
+            --base, --head, and --body-file. Describe the findings, fixes, and validation
+            results; use a draft PR if anything remains unverified. Do not push directly
+            to the reviewed branch, merge, or deploy. If no fixes are needed, do not
+            create an empty commit or PR.
+
+            Write the review, check results, and any fix PR URL to GITHUB_STEP_SUMMARY
+            and, for a pull request, post them as a comment on the original PR using
+            gh pr comment with --repo and --body-file.
           claude_args: '--dangerously-skip-permissions'

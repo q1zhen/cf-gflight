@@ -130,9 +130,14 @@ In GitHub, open **Actions → Claude Code Review → Run workflow**, select the 
 review (normally `main`), and run it. Claude reads the codebase, runs type checking,
 tests, and the build, exercises documented functionality, and reports findings and
 validation gaps in the run summary. The same workflow reviews pull requests and posts
-a review comment. It does not commit fixes or open PRs.
+a review comment. When it finds actionable issues, Claude makes focused fixes, adds
+regression tests, reruns the checks, and opens a fix PR against the reviewed branch
+(the source branch for PR reviews). It opens a draft if validation is incomplete and
+does not create a PR when no fixes are needed.
 
 Claude runs with `--dangerously-skip-permissions` and the repository's `GITHUB_TOKEN`
 with `permissions: write-all`. GitHub's repository and fork restrictions still apply.
 Authentication uses the existing `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
+Enable **Allow GitHub Actions to create and approve pull requests** in the repository's
+Actions settings so the workflow token can open fix PRs.
 The workflow must be on the default branch for the manual trigger to appear.
